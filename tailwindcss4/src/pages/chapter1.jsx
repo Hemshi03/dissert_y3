@@ -64,6 +64,7 @@ export default function Chapter1() {
     const trimmed = editorValue.trim();
     const regex = /^dim\s+mana\s+as\s+integer\s*=\s*50\s*$/i;
 
+    //---
     if (regex.test(trimmed)) {
       setCodeValid(true);
       setStoryMessage('✨ Correct! The chest opens. ✨');
@@ -74,6 +75,7 @@ export default function Chapter1() {
       alert('❌ Try again. Hint: Dim mana As Integer = 50');
     }
   };
+  
 
   let currentLength = 0;
   const renderedStory = storyElements.map((el, idx) => {

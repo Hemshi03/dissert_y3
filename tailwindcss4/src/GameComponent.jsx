@@ -46,7 +46,7 @@ export default function GameComponent({ codeValid }) {
       {/* Treasure chest GIF */}
       <img
         id="treasure-gif"
-        src="/treasure_chest.gif" // Make sure this GIF is in your public folder
+        src="../treasure_chest.gif" // Make sure this GIF is in your public folder
         alt="Treasure Chest"
         className="absolute w-[110px] h-[110px] bottom-10 left-1/2 -translate-x-1/2 z-10"
         style={{ display: 'none' }}

@@ -5,48 +5,65 @@ export default class MyScene extends Phaser.Scene {
     super('MyScene');
     this.robotMoving = false;
     this.robotSpeed = 150;
+    this.chestOpened = false;
+    this.sceneReadyCallback = null;
   }
 
   preload() {
     this.load.image('background', '/forest_bg.jpg');
-    this.load.spritesheet('robot', '/robot.png', {
-      frameWidth: 64,
-      frameHeight: 64,
+
+    // ✅ Load robot as a spritesheet instead of atlas
+    this.load.spritesheet('robot', '/robot2.png', {
+      frameWidth: 160,   // adjust if each robot frame has different size
+      frameHeight: 228
     });
+
+    // ✅ Load chest spritesheet
+    // this.load.spritesheet('treasure', '/treasure_chest.png', {
+    //   frameWidth: 128,
+    //   frameHeight: 128
+    // });
   }
 
   create() {
     const { width, height } = this.game.config;
-    const GROUND_Y = 350;
+    const GROUND_Y = 400;
 
     this.physics.world.setBounds(0, 0, width, height);
 
-    // Background
     this.add.image(0, 0, 'background')
       .setOrigin(0, 0)
       .setDisplaySize(width, height);
 
-    // Robot sprite
-    this.robot = this.physics.add.sprite(100, GROUND_Y, 'robot').setScale(2).setOrigin(0.5, 1);
+    // ✅ Create robot sprite
+    this.robot = this.physics.add.sprite(100, GROUND_Y, 'robot')
+      .setScale(0.5)
+      .setOrigin(0.5, 1);
 
-    // Animations
+    // ✅ Robot walking animation
     this.anims.create({
       key: 'walk',
-      frames: this.anims.generateFrameNumbers('robot', { start: 0, end: 5 }),
+      frames: this.anims.generateFrameNumbers('robot', { start: 0, end: 5 }), // frames 0–5
       frameRate: 10,
-      repeat: -1,
+      repeat: -1
     });
 
-    this.anims.create({
-      key: 'idle',
-      frames: [{ key: 'robot', frame: 0 }],
-      frameRate: 10,
-    });
+    this.robot.play('walk');
 
-    this.robot.play('idle');
+    // ✅ Treasure chest sprite
+    // this.treasureChest = this.physics.add.staticSprite(width / 2, GROUND_Y, 'treasure')
+    //   .setScale(0.7)
+    //   .setOrigin(0.5, 1);
 
-    // Chest position (we won't use Phaser sprite for chest)
-    this.chestX = width / 2;
+    // // ✅ Chest opening animation
+    // this.anims.create({
+    //   key: 'openChest',
+    //   frames: this.anims.generateFrameNumbers('treasure', { start: 0, end: 4 }),
+    //   frameRate: 10,
+    //   repeat: 0
+    // });
+
+    this.physics.add.overlap(this.robot, this.treasureChest, this.onReachChest, null, this);
 
     // Notify React that scene is ready
     this.events.emit('scene-ready', this);
@@ -55,21 +72,29 @@ export default class MyScene extends Phaser.Scene {
   update() {
     if (this.robotMoving) {
       this.robot.setVelocityX(this.robotSpeed);
-      this.robot.play('walk', true);
-
-      // Check collision with chest (HTML element)
-      if (this.robot.x >= this.chestX) {
-        this.robot.setVelocityX(0);
-        this.robot.play('idle');
-        this.robotMoving = false;
-
-        // Trigger chest opening in React
-        window.dispatchEvent(new Event('openChest'));
+      if (!this.robot.anims.isPlaying) {
+        this.robot.play('walk');
       }
+    } else {
+      this.robot.setVelocityX(0);
+      this.robot.anims.stop();
+    }
+  }
+
+  onReachChest() {
+    if (!this.chestOpened) {
+      this.chestOpened = true;
+      this.robotMoving = false;
+
+      this.treasureChest.play('openChest');
+
+      const gif = document.getElementById('treasure-gif');
+      if (gif) gif.style.display = 'block';
     }
   }
 
   moveRobotToChest() {
     this.robotMoving = true;
+    this.robot.anims.play('walk', true);
   }
 }
