@@ -7,6 +7,7 @@ import Chapter1 from "./pages/chapter1";
 import Dashboard from "./pages/dashboard";
 import GameComponent from "./GameComponent"; // Import GameComponent
 import Leaderboard from "./pages/leaderboard";
+import AboutUs from './pages/aboutus';
 
 
 
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/chapter1" element={<Chapter1 />} />
         <Route path="/game" element={<GameComponent />} />
         <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/about" element={<AboutUs />} />
 
       </Routes>
     </Router>
