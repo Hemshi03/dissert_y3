@@ -64,7 +64,6 @@ export default function Chapter1() {
     const trimmed = editorValue.trim();
     const regex = /^dim\s+mana\s+as\s+integer\s*=\s*50\s*$/i;
 
-    //---
     if (regex.test(trimmed)) {
       setCodeValid(true);
       setStoryMessage('✨ Correct! The chest opens. ✨');
@@ -75,7 +74,6 @@ export default function Chapter1() {
       alert('❌ Try again. Hint: Dim mana As Integer = 50');
     }
   };
-  
 
   let currentLength = 0;
   const renderedStory = storyElements.map((el, idx) => {
@@ -104,7 +102,7 @@ export default function Chapter1() {
       )}
 
       {gameStarted && (
-        <div className="flex flex-col lg:flex-row w-full max-w-6xl gap-4 h-[500px] mt-4">
+        <div className="flex flex-col lg:flex-row w-full max-w-6xl gap-4 h-[600px] lg:h-[500px] mt-4">
           {/* Game Scene */}
           <div className="w-full lg:w-3/5 h-64 lg:h-full relative bg-[#1C1F3C] rounded-lg flex flex-col items-center justify-center overflow-hidden">
             <div className="absolute top-3 left-3 bg-black/60 px-3 py-1 rounded-lg text-yellow-300 font-bold text-sm shadow">
@@ -118,28 +116,34 @@ export default function Chapter1() {
           </div>
 
           {/* Editor Panel */}
-          <div className="w-full lg:w-2/5 h-64 lg:h-full bg-gray-800 p-3 rounded-2xl shadow-lg border border-gray-700 flex flex-col">
-            <Editor
-              height="55%"
-              defaultLanguage="vb"
-              value={editorValue}
-              theme="vs-dark"
-              options={{
-                fontSize: 15,
-                fontFamily: 'Fira Code, monospace',
-                fontLigatures: true,
-                minimap: { enabled: false },
-                smoothScrolling: true,
-                roundedSelection: true,
-                padding: { top: 8 },
-              }}
-              onChange={(value) => setEditorValue(value)}
-            />
+          <div className="w-full lg:w-2/5 h-64 md:h-[400px] lg:h-full bg-gray-800 p-4 rounded-2xl shadow-lg border border-gray-700 flex flex-col">
+            <div className="flex-1 rounded-xl overflow-hidden shadow-inner mb-2">
+              <Editor
+                height="100%"
+                defaultLanguage="vb"
+                value={editorValue}
+                theme="vs-dark"
+                options={{
+                  fontSize: 16,
+                  fontFamily: 'Fira Code, monospace',
+                  fontLigatures: true,
+                  minimap: { enabled: false },
+                  smoothScrolling: true,
+                  roundedSelection: true,
+                  padding: { top: 10, bottom: 10 },
+                  scrollbar: {
+                    verticalScrollbarSize: 8,
+                    horizontalScrollbarSize: 8,
+                  },
+                }}
+                onChange={(value) => setEditorValue(value)}
+              />
+            </div>
 
             <button
               onClick={handleRunCode}
               disabled={!editorValue.trim() || codeValid}
-              className={`px-4 py-2 rounded mt-2 transition ${editorValue.trim() && !codeValid ? 'bg-blue-500 hover:bg-blue-400' : 'bg-gray-500 cursor-not-allowed'}`}
+              className={`mt-auto px-4 py-2 rounded transition ${editorValue.trim() && !codeValid ? 'bg-blue-500 hover:bg-blue-400' : 'bg-gray-500 cursor-not-allowed'}`}
             >
               Run Code
             </button>
@@ -149,4 +153,6 @@ export default function Chapter1() {
     </div>
   );
 }
+
+
 
