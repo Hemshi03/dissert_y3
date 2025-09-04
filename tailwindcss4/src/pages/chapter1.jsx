@@ -1,3 +1,4 @@
+// Chapter1.jsx
 import { useState, useEffect, useRef } from 'react';
 import GameComponent from '../GameComponent';
 import Editor from '@monaco-editor/react';
@@ -12,9 +13,10 @@ export default function Chapter1() {
   const [xpPopup, setXpPopup] = useState(null);
   const [storyMessage, setStoryMessage] = useState('');
   const [chapterComplete, setChapterComplete] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState('vb');
 
   const intervalRef = useRef(null);
-  const maxXp = 100; // XP needed to complete this chapter
+  const maxXp = 100;
 
   const storyElements = [
     { text: "The Forest of Beginnings stretches before you, where magical treasure chests hold the essence of ", className: "" },
@@ -30,14 +32,25 @@ export default function Chapter1() {
     { text: "numbers", className: "text-green-400 font-bold" },
     { text: ", ", className: "" },
     { text: "words", className: "text-pink-400 font-bold" },
-    { text: ", or other data.\"", className: "" },
-    { text: "\n\"To unlock a chest, declare a variable to store your ", className: "" },
-    { text: "mana points", className: "text-red-400 font-bold" },
     { text: ".\"", className: "" },
+    { text: "\n\"To unlock a chest, declare a variable to store your mana points.", className: "" },
     { text: "\nType your declaration in the editor. The correct code will open the chest and grant you XP and magical items.", className: "" },
   ];
 
-  // Typing effect
+  // Variable declaration hints (story/example)
+  const variableHints = {
+    vb: 'Example: Dim RoboVar As String',
+    python: 'Example: RoboVar = "Hello"',
+    java: 'Example: String RoboVar;'
+  };
+
+  // Code validation regex (keeps original challenge)
+  const codeValidationRegex = {
+    vb: /^dim\s+mana\s+as\s+integer\s*=\s*50$/i,
+    python: /^mana\s*=\s*50$/i,
+    java: /^int\s+mana\s*=\s*50;$/i
+  };
+
   useEffect(() => {
     if (!storyCompleted) {
       intervalRef.current = setInterval(() => {
@@ -65,29 +78,24 @@ export default function Chapter1() {
 
   const handleRunCode = () => {
     const trimmed = editorValue.trim();
-    const regex = /^dim\s+mana\s+as\s+integer\s*=\s*50\s*$/i;
-
-    if (regex.test(trimmed) && !codeValid) {
+    if (codeValidationRegex[selectedLanguage].test(trimmed)) {
       setCodeValid(true);
       setStoryMessage('✨ Correct! The chest opens. ✨');
       setXp(prev => {
         const newXp = Math.min(prev + 50, maxXp);
-        if (newXp >= maxXp) {
-          setChapterComplete(true);
-        }
+        if (newXp >= maxXp) setChapterComplete(true);
         return newXp;
       });
       setXpPopup('+50 XP');
       setTimeout(() => setXpPopup(null), 1200);
     } else {
-      alert('❌ Try again. Hint: Dim mana As Integer = 50');
+      alert('❌ Try again! Hint: Use a variable like RoboVar');
     }
   };
 
   const handleNext = () => {
     console.log('Next button clicked!');
-    // Example: navigate to next chapter or scene
-    // If using React Router: navigate('/chapter2');
+    // Example: navigate to next chapter
   };
 
   let currentLength = 0;
@@ -95,31 +103,23 @@ export default function Chapter1() {
     const end = currentLength + el.text.length;
     const visibleText = typedIndex >= end ? el.text : typedIndex > currentLength ? el.text.slice(0, typedIndex - currentLength) : '';
     currentLength = end;
-    return (
-      <span key={idx} className={el.className}>
-        {visibleText}
-      </span>
-    );
+    return <span key={idx} className={el.className}>{visibleText}</span>;
   });
 
   return (
     <div className="bg-[#0A0F28] text-white min-h-screen flex flex-col items-center">
-      {/* Header */}
       <header className="w-full bg-[#1C1F3C] px-6 py-3 flex items-center justify-between shadow-md">
         <h1 className="text-lg font-bold text-purple-300">📘 Chapter 1: Variables</h1>
         <div className="flex items-center gap-6">
-          {/* XP Progress */}
           <div className="w-40">
             <p className="text-xs text-yellow-300 font-bold">XP: {xp}/{maxXp}</p>
             <div className="w-full bg-gray-700 rounded-full h-2">
               <div
                 className="bg-purple-500 h-2 rounded-full transition-all duration-500"
                 style={{ width: `${Math.min((xp / maxXp) * 100, 100)}%` }}
-              ></div>
+              />
             </div>
           </div>
-
-          {/* Next Button */}
           <button
             onClick={handleNext}
             className="px-4 py-2 bg-blue-500 text-white font-semibold rounded hover:bg-blue-600 transition"
@@ -129,10 +129,26 @@ export default function Chapter1() {
         </div>
       </header>
 
-      {/* Story Phase */}
       {!gameStarted && (
         <div className="w-full max-w-3xl mt-6 mb-4 p-4 bg-[#1C1F3C] rounded min-h-[150px]">
           <pre className="whitespace-pre-wrap">{renderedStory}</pre>
+
+          {storyCompleted && (
+            <div className="mt-4">
+              <label className="mr-2">Select Language:</label>
+              <select
+                value={selectedLanguage}
+                onChange={(e) => setSelectedLanguage(e.target.value)}
+                className="text-black p-1 rounded"
+              >
+                <option value="vb">Visual Basic</option>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+              </select>
+              <p className="mt-2 text-gray-300 text-sm">{variableHints[selectedLanguage]}</p>
+            </div>
+          )}
+
           <button
             onClick={skipStory}
             className="mt-4 px-4 py-2 bg-purple-500 rounded hover:bg-purple-600 transition"
@@ -142,10 +158,8 @@ export default function Chapter1() {
         </div>
       )}
 
-      {/* Game Phase */}
       {gameStarted && (
         <div className="flex flex-col lg:flex-row w-full max-w-6xl gap-4 h-[600px] lg:h-[500px] mt-6">
-          {/* Game Scene */}
           <div className="w-full lg:w-3/5 relative bg-[#1C1F3C] rounded-lg flex flex-col items-center justify-center overflow-hidden">
             <GameComponent codeValid={codeValid} />
 
@@ -165,8 +179,6 @@ export default function Chapter1() {
                 <div className="bg-[#1C1F3C] p-6 rounded-2xl text-center shadow-lg">
                   <h2 className="text-2xl font-bold text-yellow-300">🎉 Chapter Complete!</h2>
                   <p className="mt-2 text-gray-200">You’ve mastered variables and earned {xp} XP.</p>
-                  
-                  {/* Next Button */}
                   <button
                     onClick={handleNext}
                     className="mt-4 px-6 py-2 bg-blue-500 text-white font-semibold rounded hover:bg-blue-600 transition"
@@ -178,9 +190,7 @@ export default function Chapter1() {
             )}
           </div>
 
-          {/* Editor + Key Concept */}
           <div className="w-full lg:w-2/5 flex flex-col">
-            {/* Key Concept Box */}
             <div className="bg-[#1C1F3C] border-l-4 border-yellow-400 p-3 rounded-lg shadow-md mb-3">
               <h2 className="font-bold text-yellow-300 flex items-center gap-2">💡 Key Concept</h2>
               <p className="text-gray-200 mt-1 text-sm">
@@ -193,12 +203,11 @@ export default function Chapter1() {
               </ul>
             </div>
 
-            {/* Editor Panel */}
             <div className="flex-1 bg-gray-800 p-3 rounded-2xl shadow-lg border border-gray-700 flex flex-col">
               <div className="flex-1 rounded-xl overflow-hidden shadow-inner mb-2 min-h-[250px]">
                 <Editor
                   height="100%"
-                  defaultLanguage="vb"
+                  defaultLanguage={selectedLanguage}
                   value={editorValue}
                   theme="vs-dark"
                   options={{
@@ -233,6 +242,10 @@ export default function Chapter1() {
     </div>
   );
 }
+
+
+
+
 
 
 
