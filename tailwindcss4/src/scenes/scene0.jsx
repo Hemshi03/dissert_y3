@@ -10,17 +10,20 @@ export default class Scene0 extends Phaser.Scene {
     this.stopX = null;
     this.currentLevel = 1;
     this.updateListenerAdded = false;
+    this.portalVisible = false; // track portal visibility
 
     this.bgImages = {
-      1: { key: 'bg1', path: '/forest_bg.jpg' },
+      1: { key: 'bg1', path: '/forest1.png' },
       2: { key: 'bg2', path: '/forest2.png' },
       3: { key: 'bg3', path: '/forest4.png' },
+      4: { key: 'bg4', path: '/forest9.png' }, // new forest for Level 4
     };
 
     this.levelSpeeches = {
       1: "Hello, I am RoboVar! Let's start coding!",
       2: "Great! The chest is unlocked!",
       3: "Correct! The chest is unlocked.",
+      4: "Enter the portal code to move to the next land!", // Level 4 speech
     };
   }
 
@@ -30,6 +33,7 @@ export default class Scene0 extends Phaser.Scene {
       frameWidth: 230,
       frameHeight: 225,
     });
+    this.load.image('portal', '/portal.png'); // Portal asset
   }
 
   create() {
@@ -55,13 +59,16 @@ export default class Scene0 extends Phaser.Scene {
       padding: { x: 10, y: 5 },
     }).setOrigin(0.5);
 
+    // Portal for Level 4 (hidden initially)
+    this.portal = this.add.sprite(700, height - 145, 'portal').setVisible(false);
+    this.portal.setScale(0.45);
+
     // Scene ready event
     this.game.events.emit('scene-ready', this);
   }
 
   createBackground() {
-    const width = this.game.config.width;
-    const height = this.game.config.height;
+    const { width, height } = this.game.config;
     const bgConfig = this.bgImages[this.currentLevel];
 
     if (this.textures.exists(bgConfig.key)) {
@@ -106,6 +113,8 @@ export default class Scene0 extends Phaser.Scene {
       this.robot.setVelocityX(0);
       this.robot.play('idle');
       this.robot.x = this.stopX;
+
+      if (this.currentLevel === 4 && this.portalVisible) this.animatePortal();
     } else {
       this.robot.setVelocityX(Math.min(this.robotSpeed, distance * 5));
     }
@@ -128,8 +137,7 @@ export default class Scene0 extends Phaser.Scene {
 
     if (this.bg) this.bg.destroy();
     const bgConfig = this.bgImages[level];
-    const width = this.game.config.width;
-    const height = this.game.config.height;
+    const { width, height } = this.game.config;
 
     if (this.textures.exists(bgConfig.key)) {
       this.bg = this.add.image(width / 2, height / 2, bgConfig.key)
@@ -139,24 +147,25 @@ export default class Scene0 extends Phaser.Scene {
       this.bg = this.add.rectangle(width / 2, height / 2, width, height, 0x444444);
     }
     this.children.sendToBack(this.bg);
+
+    // Hide portal by default; only show after successful code run
+    this.portal.setVisible(false);
+    this.portalVisible = false;
   }
 
   showSpeech(level) {
     if (!this.levelSpeeches[level]) return;
 
-    // Destroy previous bubble if exists
     if (this.robotSpeechContainer) {
       this.robotSpeechContainer.destroy();
       this.robotSpeechContainer = null;
     }
 
-    // Remove old typing event
     if (this.typingEvent) {
       this.typingEvent.remove(false);
       this.typingEvent = null;
     }
 
-    // Create speech container
     this.robotSpeechContainer = this.add.container(
       this.robot.x + 100,
       this.robot.y - this.robot.displayHeight / 1.5
@@ -177,10 +186,8 @@ export default class Scene0 extends Phaser.Scene {
     this.robotSpeechContainer.add(this.robotSpeechText);
     this.robotSpeechContainer.setVisible(true);
 
-    // Type out speech
     this.typeText(this.levelSpeeches[level]);
 
-    // Keep bubble following robot (added only once)
     if (!this.updateListenerAdded) {
       this.events.on('update', () => {
         if (this.robotSpeechContainer) {
@@ -193,7 +200,6 @@ export default class Scene0 extends Phaser.Scene {
       this.updateListenerAdded = true;
     }
 
-    // TTS
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(this.levelSpeeches[level]);
       utterance.lang = 'en-US';
@@ -225,6 +231,38 @@ export default class Scene0 extends Phaser.Scene {
     const radius = Math.min(width, height) / 2;
     graphics.strokeRoundedRect(x - width / 2, y - height / 2, width, height, radius);
     graphics.fillRoundedRect(x - width / 2, y - height / 2, width, height, radius);
+  }
+
+  showPortal() {
+    if (this.currentLevel === 4 && !this.portalVisible) {
+      this.portal.setVisible(true);
+      this.portalVisible = true;
+
+      // Make portal rotate
+      this.tweens.add({
+        targets: this.portal,
+        angle: 360,
+        duration: 4000,
+        repeat: -1
+      });
+    }
+  }
+
+  animatePortal() {
+    if (!this.portal) return;
+
+    this.tweens.add({
+      targets: this.robot,
+      x: this.portal.x,
+      y: this.portal.y,
+      scale: 0,
+      duration: 1500,
+      ease: 'Power2',
+      onComplete: () => {
+        this.robot.setVisible(false);
+        this.game.events.emit('level-complete', this.currentLevel);
+      }
+    });
   }
 }
 

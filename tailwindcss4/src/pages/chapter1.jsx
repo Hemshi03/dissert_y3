@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { ArrowRight, Star } from "lucide-react";
 import interact from "interactjs";
 import GameComponent from "../GameComponent";
 import { useNavigate } from "react-router-dom";
+import MCQPage1 from "./McqPage1";
 
 export default function Chapter1() {
   const [showIntro, setShowIntro] = useState(true);
@@ -13,27 +14,30 @@ export default function Chapter1() {
   const [shuffledBlocks, setShuffledBlocks] = useState([]);
   const [sceneInstance, setSceneInstance] = useState(null);
   const [gameMessage, setGameMessage] = useState("");
-  const totalLevels = 3;
+  const [portalActivated, setPortalActivated] = useState(false); // NEW: track Level 4 portal
 
+  const totalLevels = 4; 
   const navigate = useNavigate();
 
   const languageBlocks = {
     1: { vb: ["Dim", "RoboVar", "As", "String"], java: ["String", "roboVar", ";"], python: ['robo_var', '=', '""'] },
     2: { vb: ["Dim", "treasureCode", "As", "Integer"], java: ["int", "treasureCode", ";"], python: ["treasureCode", "=", "0"] },
     3: { vb: ["Dim", "Unlocked", "As", "Boolean"], java: ["boolean", "Unlocked", "=", "true", ";"], python: ["Unlocked", "=", "True"] },
+    4: { vb: ["Dim", "portalCode", "As", "Integer", "=", "123"], java: ["int", "portalCode", "=", "123", ";"], python: ["portal_code", "=", "123"] },
   };
 
-  // Normalize expected code for Java Level 2 (ignore spaces)
   const expectedCode = {
     1: { vb: "Dim RoboVar As String", java: "String roboVar ;", python: 'robo_var = ""' },
     2: { vb: "Dim treasureCode As Integer", java: "int treasureCode ;", python: "treasureCode = 0" },
     3: { vb: "Dim Unlocked As Boolean", java: "boolean Unlocked = true ;", python: "Unlocked = True" },
+    4: { vb: "Dim portalCode As Integer = 123", java: "int portalCode = 123 ;", python: "portal_code = 123" },
   };
 
   const levelQuestions = {
     1: "Name your robot using the blocks below.",
     2: "Next, unlock the chest with a code.",
     3: "Check whether the chest is locked.",
+    4: "Assign the portal code to move to the next land.",
   };
 
   const progressPercent = Math.round((level / totalLevels) * 100);
@@ -57,6 +61,7 @@ export default function Chapter1() {
     setXp(0);
     setDroppedBlocks(Array(languageBlocks[1][selectedLanguage].length).fill(""));
     setShuffledBlocks(shuffleArray(languageBlocks[1][selectedLanguage]));
+    setPortalActivated(false); // Reset portal
   };
 
   const handleNextLevel = () => {
@@ -65,12 +70,11 @@ export default function Chapter1() {
       setLevel(nextLevel);
       setDroppedBlocks(Array(languageBlocks[nextLevel][selectedLanguage].length).fill(""));
       setShuffledBlocks(shuffleArray(languageBlocks[nextLevel][selectedLanguage]));
+      setPortalActivated(false); // Reset portal for new level
 
       if (sceneInstance) {
         if (sceneInstance.setLevel) sceneInstance.setLevel(nextLevel);
-        if (sceneInstance.robotSpeechContainer) {
-          sceneInstance.robotSpeechContainer.destroy();
-        }
+        if (sceneInstance.robotSpeechContainer) sceneInstance.robotSpeechContainer.destroy();
       }
 
       setXp((prev) => prev + 50);
@@ -84,32 +88,30 @@ export default function Chapter1() {
       return;
     }
 
-    // Join blocks and normalize spaces for comparison
     const userCode = droppedBlocks.join(" ").trim().replace(/\s+/g, " ");
     const expected = expectedCode[level][selectedLanguage].trim().replace(/\s+/g, " ");
 
     if (sceneInstance && typeof sceneInstance.showSpeech === "function") {
-      setTimeout(() => {
-        sceneInstance.showSpeech(level);
-      }, 50);
+      setTimeout(() => sceneInstance.showSpeech(level), 50);
     }
 
     if (userCode === expected) {
       setXp((prev) => prev + 50);
 
-      // Level 2: show treasure/chest
       if (level === 2 && sceneInstance) {
-        if (typeof sceneInstance.moveRobotToChest === "function") {
-          sceneInstance.moveRobotToChest();
-        }
-        if (typeof sceneInstance.showChest === "function") {
-          sceneInstance.showChest();
-        }
+        if (sceneInstance.moveRobotToChest) sceneInstance.moveRobotToChest();
+        if (sceneInstance.showChest) sceneInstance.showChest();
       }
 
-      // Level 3: show chest as unlocked
-      if (level === 3 && sceneInstance && typeof sceneInstance.showChest === "function") {
+      if (level === 3 && sceneInstance && sceneInstance.showChest) {
         sceneInstance.showChest(true);
+      }
+
+      // Level 4 portal appears only after correct code
+      if (level === 4 && sceneInstance && typeof sceneInstance.showPortal === "function") {
+        sceneInstance.showPortal();
+        setPortalActivated(true);
+        setGameMessage("✅ Portal activated! Click the Next Level button to proceed.");
       }
     } else {
       setGameMessage("❌ Oops! Check the order of your blocks.");
@@ -161,7 +163,6 @@ export default function Chapter1() {
 
   return (
     <div className="bg-[#0A0F28] text-white min-h-screen flex flex-col">
-      {/* Intro / Language Selection */}
       {showIntro ? (
         <div className="relative flex flex-col items-center justify-center text-center h-screen px-4">
           <div className="absolute inset-0 bg-black/60" />
@@ -172,18 +173,14 @@ export default function Chapter1() {
             <p className="text-lg md:text-xl text-gray-200 mb-8 max-w-2xl mx-auto">
               Guide your robot through magical forests and unlock coding powers!
             </p>
-            <h2 className="text-lg text-blue-300 mb-4 font-semibold">
-              Choose your coding spell:
-            </h2>
+            <h2 className="text-lg text-blue-300 mb-4 font-semibold">Choose your coding spell:</h2>
             <div className="flex justify-center gap-4 mb-10 flex-wrap">
               {["vb", "java", "python"].map((lang) => (
                 <button
                   key={lang}
                   onClick={() => setSelectedLanguage(lang)}
                   className={`px-6 py-3 rounded-lg font-bold shadow-lg transition transform hover:scale-110 ${
-                    selectedLanguage === lang
-                      ? "bg-green-500"
-                      : "bg-blue-600 hover:bg-blue-700"
+                    selectedLanguage === lang ? "bg-green-500" : "bg-blue-600 hover:bg-blue-700"
                   }`}
                 >
                   {lang === "vb" ? "Visual Basic" : lang.charAt(0).toUpperCase() + lang.slice(1)}
@@ -206,10 +203,7 @@ export default function Chapter1() {
               <h1 className="text-xl font-bold text-blue-300">Learning Variables</h1>
               <p className="text-sm text-gray-400">Level {level} of {totalLevels}</p>
               <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden mt-2">
-                <div
-                  className="h-3 bg-green-500 transition-all duration-500"
-                  style={{ width: `${progressPercent}%` }}
-                />
+                <div className="h-3 bg-green-500 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
               </div>
               <span className="text-xs text-green-400 font-bold mt-1 block md:text-left text-center">
                 {progressPercent}%
@@ -238,11 +232,7 @@ export default function Chapter1() {
                 <h4 className="font-semibold text-blue-300 mb-2">🧩 Blocks</h4>
                 <div className="flex flex-wrap gap-2">
                   {shuffledBlocks.map((block, idx) => (
-                    <span
-                      key={idx}
-                      className="draggable-block px-3 py-1 bg-blue-700 rounded cursor-pointer"
-                      data-value={block}
-                    >
+                    <span key={idx} className="draggable-block px-3 py-1 bg-blue-700 rounded cursor-pointer" data-value={block}>
                       {block}
                     </span>
                   ))}
@@ -253,18 +243,12 @@ export default function Chapter1() {
                 <h4 className="font-semibold text-blue-300 mb-2">📝 Workspace</h4>
                 <div id="workspace" className="flex gap-2 border border-dashed border-gray-500 h-32 p-2 rounded-lg">
                   {droppedBlocks.map((block, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex-1 border border-gray-700 rounded flex items-center justify-center text-gray-500 ${!block ? "bg-[#0F1228]" : "bg-[#1A1D33]"}`}
-                    >
+                    <div key={idx} className={`flex-1 border border-gray-700 rounded flex items-center justify-center text-gray-500 ${!block ? "bg-[#0F1228]" : "bg-[#1A1D33]"}`}>
                       {block || "Drop"}
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={handleResetWorkspace}
-                  className="mt-2 px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-sm"
-                >
+                <button onClick={handleResetWorkspace} className="mt-2 px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-sm">
                   Reset Workspace
                 </button>
               </div>
@@ -274,10 +258,7 @@ export default function Chapter1() {
               </div>
 
               <div className="flex gap-2">
-                <button
-                  onClick={handleRunCode}
-                  className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 rounded font-semibold"
-                >
+                <button onClick={handleRunCode} className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 rounded font-semibold">
                   Run Code
                 </button>
                 <button className="flex-1 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 rounded font-semibold">
@@ -285,9 +266,9 @@ export default function Chapter1() {
                 </button>
               </div>
 
-              {/* Next Level / MCQ */}
+              {/* Next Level / Arrow Button */}
               <div className="flex justify-center mt-4">
-                {level < totalLevels ? (
+                {level < 4 ? (
                   <button
                     onClick={handleNextLevel}
                     className="w-12 h-12 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 font-semibold shadow-lg"
@@ -296,10 +277,10 @@ export default function Chapter1() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => navigate("/McqPage1", { state: { xp, selectedLanguage } })}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold"
+                    onClick={() => portalActivated && navigate("/McqPage1", { state: { xp, selectedLanguage } })}
+                    className={`px-6 py-2 rounded font-semibold ${portalActivated ? "bg-green-500 hover:bg-green-600" : "bg-gray-600 cursor-not-allowed"}`}
                   >
-                    Go to MCQ
+                   Mcq Quiz
                   </button>
                 )}
               </div>
@@ -310,11 +291,8 @@ export default function Chapter1() {
             <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
               <div className="bg-[#1C1F3C] p-6 rounded-xl shadow-xl text-center max-w-sm">
                 <p className="text-white text-lg mb-4">{gameMessage}</p>
-                <button
-                  onClick={() => setGameMessage("")}
-                  className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded font-semibold"
-                >
-                  OK
+                <button onClick={() => setGameMessage("")} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white">
+                  Close
                 </button>
               </div>
             </div>
@@ -324,4 +302,3 @@ export default function Chapter1() {
     </div>
   );
 }
-
