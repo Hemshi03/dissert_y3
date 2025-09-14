@@ -8,6 +8,8 @@ import Dashboard from "./pages/dashboard";
 import GameComponent from "./GameComponent"; // Import GameComponent
 import Leaderboard from "./pages/leaderboard";
 import AboutUs from './pages/aboutus';
+import Admin from "./pages/admin";
+import McqPage1 from "./pages/McqPage1";
 
 
 
@@ -23,7 +25,8 @@ export default function App() {
         <Route path="/game" element={<GameComponent />} />
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/about" element={<AboutUs />} />
-
+        <Route path="/admin" element={<Admin />} />
+        <Route path="/McqPage1" element={<McqPage1 />} />
       </Routes>
     </Router>
   );

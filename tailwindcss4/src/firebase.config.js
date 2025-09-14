@@ -1,10 +1,9 @@
-// firebase.config.js (or firebase.js)
+// firebase.config.js
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore"; 
-import { getStorage } from "firebase/storage"; // optional if you use storage
+import { getStorage } from "firebase/storage";
 
-// Replace the placeholders below with your actual Firebase project credentials
 const firebaseConfig = {
   apiKey: "AIzaSyA75A0qdPT1qVMY7cQnjXBtXHr5kTjal1o",
   authDomain: "kodedge-auth.firebaseapp.com",
@@ -16,10 +15,10 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app); // optional
 
-// Export services to use elsewhere
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app); // optional
+// Only named exports
+export { app, auth, db, storage };
 
-export default app;

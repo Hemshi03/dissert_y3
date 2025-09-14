@@ -1,252 +1,327 @@
-// Chapter1.jsx
-import { useState, useEffect, useRef } from 'react';
-import GameComponent from '../GameComponent';
-import Editor from '@monaco-editor/react';
+import { useState, useEffect } from "react";
+import { ArrowRight, Star } from "lucide-react";
+import interact from "interactjs";
+import GameComponent from "../GameComponent";
+import { useNavigate } from "react-router-dom";
 
 export default function Chapter1() {
-  const [typedIndex, setTypedIndex] = useState(0);
-  const [storyCompleted, setStoryCompleted] = useState(false);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [editorValue, setEditorValue] = useState('');
-  const [codeValid, setCodeValid] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
+  const [selectedLanguage, setSelectedLanguage] = useState("");
+  const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
-  const [xpPopup, setXpPopup] = useState(null);
-  const [storyMessage, setStoryMessage] = useState('');
-  const [chapterComplete, setChapterComplete] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('vb');
+  const [droppedBlocks, setDroppedBlocks] = useState([]);
+  const [shuffledBlocks, setShuffledBlocks] = useState([]);
+  const [sceneInstance, setSceneInstance] = useState(null);
+  const [gameMessage, setGameMessage] = useState("");
+  const totalLevels = 3;
 
-  const intervalRef = useRef(null);
-  const maxXp = 100;
+  const navigate = useNavigate();
 
-  const storyElements = [
-    { text: "The Forest of Beginnings stretches before you, where magical treasure chests hold the essence of ", className: "" },
-    { text: "variables", className: "text-yellow-400 font-bold" },
-    { text: ".", className: "" },
-    { text: "\nA friendly robot named ", className: "" },
-    { text: "RoboVar", className: "text-blue-400 font-bold" },
-    { text: " rolls forward.", className: "" },
-    { text: "\nRoboVar says: \"Welcome, young coder! These chests are locked by the magic of ", className: "" },
-    { text: "variables", className: "text-yellow-400 font-bold" },
-    { text: ".\"", className: "" },
-    { text: "\n\"Variables are containers where we store information—", className: "" },
-    { text: "numbers", className: "text-green-400 font-bold" },
-    { text: ", ", className: "" },
-    { text: "words", className: "text-pink-400 font-bold" },
-    { text: ".\"", className: "" },
-    { text: "\n\"To unlock a chest, declare a variable to store your mana points.", className: "" },
-    { text: "\nType your declaration in the editor. The correct code will open the chest and grant you XP and magical items.", className: "" },
-  ];
-
-  // Variable declaration hints (story/example)
-  const variableHints = {
-    vb: 'Example: Dim RoboVar As String',
-    python: 'Example: RoboVar = "Hello"',
-    java: 'Example: String RoboVar;'
+  const languageBlocks = {
+    1: { vb: ["Dim", "RoboVar", "As", "String"], java: ["String", "roboVar", ";"], python: ['robo_var', '=', '""'] },
+    2: { vb: ["Dim", "treasureCode", "As", "Integer"], java: ["int", "treasureCode", ";"], python: ["treasureCode", "=", "0"] },
+    3: { vb: ["Dim", "Unlocked", "As", "Boolean"], java: ["boolean", "Unlocked", "=", "true", ";"], python: ["Unlocked", "=", "True"] },
   };
 
-  // Code validation regex (keeps original challenge)
-  const codeValidationRegex = {
-    vb: /^dim\s+mana\s+as\s+integer\s*=\s*50$/i,
-    python: /^mana\s*=\s*50$/i,
-    java: /^int\s+mana\s*=\s*50;$/i
+  // Normalize expected code for Java Level 2 (ignore spaces)
+  const expectedCode = {
+    1: { vb: "Dim RoboVar As String", java: "String roboVar ;", python: 'robo_var = ""' },
+    2: { vb: "Dim treasureCode As Integer", java: "int treasureCode ;", python: "treasureCode = 0" },
+    3: { vb: "Dim Unlocked As Boolean", java: "boolean Unlocked = true ;", python: "Unlocked = True" },
   };
 
-  useEffect(() => {
-    if (!storyCompleted) {
-      intervalRef.current = setInterval(() => {
-        setTypedIndex(prev => {
-          const totalLength = storyElements.reduce((sum, e) => sum + e.text.length, 0);
-          if (prev + 1 > totalLength) {
-            clearInterval(intervalRef.current);
-            setStoryCompleted(true);
-            return prev;
-          }
-          return prev + 1;
-        });
-      }, 30);
+  const levelQuestions = {
+    1: "Name your robot using the blocks below.",
+    2: "Next, unlock the chest with a code.",
+    3: "Check whether the chest is locked.",
+  };
 
-      return () => clearInterval(intervalRef.current);
+  const progressPercent = Math.round((level / totalLevels) * 100);
+
+  const shuffleArray = (arr) => {
+    const array = [...arr];
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
     }
-  }, [storyCompleted]);
+    return array;
+  };
 
-  const skipStory = () => {
-    clearInterval(intervalRef.current);
-    setTypedIndex(storyElements.reduce((sum, e) => sum + e.text.length, 0));
-    setStoryCompleted(true);
-    setGameStarted(true);
+  const handleStartGame = () => {
+    if (!selectedLanguage) {
+      setGameMessage("⚠️ Please select a language first!");
+      return;
+    }
+    setShowIntro(false);
+    setLevel(1);
+    setXp(0);
+    setDroppedBlocks(Array(languageBlocks[1][selectedLanguage].length).fill(""));
+    setShuffledBlocks(shuffleArray(languageBlocks[1][selectedLanguage]));
+  };
+
+  const handleNextLevel = () => {
+    if (level < totalLevels) {
+      const nextLevel = level + 1;
+      setLevel(nextLevel);
+      setDroppedBlocks(Array(languageBlocks[nextLevel][selectedLanguage].length).fill(""));
+      setShuffledBlocks(shuffleArray(languageBlocks[nextLevel][selectedLanguage]));
+
+      if (sceneInstance) {
+        if (sceneInstance.setLevel) sceneInstance.setLevel(nextLevel);
+        if (sceneInstance.robotSpeechContainer) {
+          sceneInstance.robotSpeechContainer.destroy();
+        }
+      }
+
+      setXp((prev) => prev + 50);
+    }
   };
 
   const handleRunCode = () => {
-    const trimmed = editorValue.trim();
-    if (codeValidationRegex[selectedLanguage].test(trimmed)) {
-      setCodeValid(true);
-      setStoryMessage('✨ Correct! The chest opens. ✨');
-      setXp(prev => {
-        const newXp = Math.min(prev + 50, maxXp);
-        if (newXp >= maxXp) setChapterComplete(true);
-        return newXp;
-      });
-      setXpPopup('+50 XP');
-      setTimeout(() => setXpPopup(null), 1200);
+    const allFilled = droppedBlocks.every((b) => b);
+    if (!allFilled) {
+      setGameMessage("⚠️ Please fill all blocks in the workspace before running!");
+      return;
+    }
+
+    // Join blocks and normalize spaces for comparison
+    const userCode = droppedBlocks.join(" ").trim().replace(/\s+/g, " ");
+    const expected = expectedCode[level][selectedLanguage].trim().replace(/\s+/g, " ");
+
+    if (sceneInstance && typeof sceneInstance.showSpeech === "function") {
+      setTimeout(() => {
+        sceneInstance.showSpeech(level);
+      }, 50);
+    }
+
+    if (userCode === expected) {
+      setXp((prev) => prev + 50);
+
+      // Level 2: show treasure/chest
+      if (level === 2 && sceneInstance) {
+        if (typeof sceneInstance.moveRobotToChest === "function") {
+          sceneInstance.moveRobotToChest();
+        }
+        if (typeof sceneInstance.showChest === "function") {
+          sceneInstance.showChest();
+        }
+      }
+
+      // Level 3: show chest as unlocked
+      if (level === 3 && sceneInstance && typeof sceneInstance.showChest === "function") {
+        sceneInstance.showChest(true);
+      }
     } else {
-      alert('❌ Try again! Hint: Use a variable like RoboVar');
+      setGameMessage("❌ Oops! Check the order of your blocks.");
     }
   };
 
-  const handleNext = () => {
-    console.log('Next button clicked!');
-    // Example: navigate to next chapter
+  const handleResetWorkspace = () => {
+    setDroppedBlocks(Array(languageBlocks[level][selectedLanguage].length).fill(""));
   };
 
-  let currentLength = 0;
-  const renderedStory = storyElements.map((el, idx) => {
-    const end = currentLength + el.text.length;
-    const visibleText = typedIndex >= end ? el.text : typedIndex > currentLength ? el.text.slice(0, typedIndex - currentLength) : '';
-    currentLength = end;
-    return <span key={idx} className={el.className}>{visibleText}</span>;
-  });
+  useEffect(() => {
+    if (level <= totalLevels) {
+      interact(".draggable-block").draggable({
+        inertia: true,
+        autoScroll: true,
+        listeners: {
+          move(event) {
+            const target = event.target;
+            const x = (parseFloat(target.getAttribute("data-x")) || 0) + event.dx;
+            const y = (parseFloat(target.getAttribute("data-y")) || 0) + event.dy;
+            target.style.transform = `translate(${x}px, ${y}px)`;
+            target.setAttribute("data-x", x);
+            target.setAttribute("data-y", y);
+          },
+        },
+      });
+
+      interact("#workspace").dropzone({
+        accept: ".draggable-block",
+        overlap: 0.75,
+        ondrop(event) {
+          const value = event.relatedTarget.dataset.value;
+          setDroppedBlocks((prev) => {
+            const newBlocks = [...prev];
+            const emptyIndex = newBlocks.findIndex((b) => !b);
+            if (emptyIndex === -1) return newBlocks;
+            newBlocks[emptyIndex] = value;
+            return newBlocks;
+          });
+        },
+      });
+
+      return () => {
+        interact(".draggable-block").unset();
+        interact("#workspace").unset();
+      };
+    }
+  }, [level, selectedLanguage]);
 
   return (
-    <div className="bg-[#0A0F28] text-white min-h-screen flex flex-col items-center">
-      <header className="w-full bg-[#1C1F3C] px-6 py-3 flex items-center justify-between shadow-md">
-        <h1 className="text-lg font-bold text-purple-300">📘 Chapter 1: Variables</h1>
-        <div className="flex items-center gap-6">
-          <div className="w-40">
-            <p className="text-xs text-yellow-300 font-bold">XP: {xp}/{maxXp}</p>
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div
-                className="bg-purple-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min((xp / maxXp) * 100, 100)}%` }}
-              />
+    <div className="bg-[#0A0F28] text-white min-h-screen flex flex-col">
+      {/* Intro / Language Selection */}
+      {showIntro ? (
+        <div className="relative flex flex-col items-center justify-center text-center h-screen px-4">
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative z-10 text-center px-6">
+            <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-300 mb-4 animate-bounce drop-shadow-lg">
+              🌌 Welcome to Looplands!
+            </h1>
+            <p className="text-lg md:text-xl text-gray-200 mb-8 max-w-2xl mx-auto">
+              Guide your robot through magical forests and unlock coding powers!
+            </p>
+            <h2 className="text-lg text-blue-300 mb-4 font-semibold">
+              Choose your coding spell:
+            </h2>
+            <div className="flex justify-center gap-4 mb-10 flex-wrap">
+              {["vb", "java", "python"].map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => setSelectedLanguage(lang)}
+                  className={`px-6 py-3 rounded-lg font-bold shadow-lg transition transform hover:scale-110 ${
+                    selectedLanguage === lang
+                      ? "bg-green-500"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+                >
+                  {lang === "vb" ? "Visual Basic" : lang.charAt(0).toUpperCase() + lang.slice(1)}
+                </button>
+              ))}
             </div>
+            <button
+              onClick={handleStartGame}
+              className="px-10 py-4 bg-yellow-500 hover:bg-yellow-600 rounded-lg text-xl font-bold shadow-lg animate-pulse"
+            >
+              🚀 Start Adventure
+            </button>
           </div>
-          <button
-            onClick={handleNext}
-            className="px-4 py-2 bg-blue-500 text-white font-semibold rounded hover:bg-blue-600 transition"
-          >
-            Next
-          </button>
         </div>
-      </header>
-
-      {!gameStarted && (
-        <div className="w-full max-w-3xl mt-6 mb-4 p-4 bg-[#1C1F3C] rounded min-h-[150px]">
-          <pre className="whitespace-pre-wrap">{renderedStory}</pre>
-
-          {storyCompleted && (
-            <div className="mt-4">
-              <label className="mr-2">Select Language:</label>
-              <select
-                value={selectedLanguage}
-                onChange={(e) => setSelectedLanguage(e.target.value)}
-                className="text-black p-1 rounded"
-              >
-                <option value="vb">Visual Basic</option>
-                <option value="python">Python</option>
-                <option value="java">Java</option>
-              </select>
-              <p className="mt-2 text-gray-300 text-sm">{variableHints[selectedLanguage]}</p>
-            </div>
-          )}
-
-          <button
-            onClick={skipStory}
-            className="mt-4 px-4 py-2 bg-purple-500 rounded hover:bg-purple-600 transition"
-          >
-            {storyCompleted ? 'Start Game' : 'Skip Story'}
-          </button>
-        </div>
-      )}
-
-      {gameStarted && (
-        <div className="flex flex-col lg:flex-row w-full max-w-6xl gap-4 h-[600px] lg:h-[500px] mt-6">
-          <div className="w-full lg:w-3/5 relative bg-[#1C1F3C] rounded-lg flex flex-col items-center justify-center overflow-hidden">
-            <GameComponent codeValid={codeValid} />
-
-            {xpPopup && (
-              <div className="absolute bottom-28 left-1/2 -translate-x-1/2 text-green-400 font-bold text-lg animate-float">
-                {xpPopup}
-              </div>
-            )}
-            {storyMessage && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 text-yellow-300 font-bold text-center drop-shadow-lg z-15">
-                {storyMessage}
-              </div>
-            )}
-
-            {chapterComplete && (
-              <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center">
-                <div className="bg-[#1C1F3C] p-6 rounded-2xl text-center shadow-lg">
-                  <h2 className="text-2xl font-bold text-yellow-300">🎉 Chapter Complete!</h2>
-                  <p className="mt-2 text-gray-200">You’ve mastered variables and earned {xp} XP.</p>
-                  <button
-                    onClick={handleNext}
-                    className="mt-4 px-6 py-2 bg-blue-500 text-white font-semibold rounded hover:bg-blue-600 transition"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="w-full lg:w-2/5 flex flex-col">
-            <div className="bg-[#1C1F3C] border-l-4 border-yellow-400 p-3 rounded-lg shadow-md mb-3">
-              <h2 className="font-bold text-yellow-300 flex items-center gap-2">💡 Key Concept</h2>
-              <p className="text-gray-200 mt-1 text-sm">
-                Think of variables like labeled boxes where you can store different types of information.
-              </p>
-              <ul className="mt-2 text-gray-300 text-sm space-y-1">
-                <li><span className="font-bold text-pink-400">String:</span> Text like "Hello World"</li>
-                <li><span className="font-bold text-green-400">Number:</span> Numbers like 42 or 3.14</li>
-                <li><span className="font-bold text-blue-400">Boolean:</span> True or False values</li>
-              </ul>
-            </div>
-
-            <div className="flex-1 bg-gray-800 p-3 rounded-2xl shadow-lg border border-gray-700 flex flex-col">
-              <div className="flex-1 rounded-xl overflow-hidden shadow-inner mb-2 min-h-[250px]">
-                <Editor
-                  height="100%"
-                  defaultLanguage={selectedLanguage}
-                  value={editorValue}
-                  theme="vs-dark"
-                  options={{
-                    fontSize: 16,
-                    fontFamily: 'Fira Code, monospace',
-                    fontLigatures: true,
-                    minimap: { enabled: false },
-                    smoothScrolling: true,
-                    roundedSelection: true,
-                    padding: { top: 10, bottom: 10 },
-                    scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
-                  }}
-                  onChange={(value) => setEditorValue(value)}
+      ) : (
+        <>
+          {/* Header & XP */}
+          <div className="bg-[#130c301f] shadow-lg px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 md:gap-12 rounded-xl">
+            <div className="flex-1 w-full">
+              <h1 className="text-xl font-bold text-blue-300">Learning Variables</h1>
+              <p className="text-sm text-gray-400">Level {level} of {totalLevels}</p>
+              <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden mt-2">
+                <div
+                  className="h-3 bg-green-500 transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
                 />
               </div>
-
-              <button
-                onClick={handleRunCode}
-                disabled={!editorValue.trim() || codeValid}
-                className={`mt-auto px-4 py-2 rounded transition ${
-                  editorValue.trim() && !codeValid
-                    ? 'bg-blue-500 hover:bg-blue-400'
-                    : 'bg-purple-500 cursor-not-allowed'
-                }`}
-              >
-                Run Code
-              </button>
+              <span className="text-xs text-green-400 font-bold mt-1 block md:text-left text-center">
+                {progressPercent}%
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-center md:text-right mt-2 md:mt-0">
+              <Star className="w-6 h-6 text-yellow-400 animate-pulse" />
+              <p className="text-lg md:text-xl font-bold text-yellow-400">{xp} XP</p>
             </div>
           </div>
-        </div>
+
+          {/* Main content */}
+          <div className="flex flex-row gap-6 p-6">
+            <GameComponent
+              level={level}
+              language={selectedLanguage}
+              codeValid={droppedBlocks.join(" ").trim().replace(/\s+/g, " ") === expectedCode[level]?.[selectedLanguage].trim().replace(/\s+/g, " ")}
+              setSceneInstance={setSceneInstance}
+            />
+
+            {/* Sidebar */}
+            <div className="flex flex-col gap-4 w-[350px]">
+              <div className="text-blue-300 font-semibold mb-2">{levelQuestions[level]}</div>
+
+              <div className="bg-[#1C1F3C] rounded-xl p-4 shadow-lg">
+                <h4 className="font-semibold text-blue-300 mb-2">🧩 Blocks</h4>
+                <div className="flex flex-wrap gap-2">
+                  {shuffledBlocks.map((block, idx) => (
+                    <span
+                      key={idx}
+                      className="draggable-block px-3 py-1 bg-blue-700 rounded cursor-pointer"
+                      data-value={block}
+                    >
+                      {block}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-[#1C1F3C] rounded-xl p-4 shadow-lg">
+                <h4 className="font-semibold text-blue-300 mb-2">📝 Workspace</h4>
+                <div id="workspace" className="flex gap-2 border border-dashed border-gray-500 h-32 p-2 rounded-lg">
+                  {droppedBlocks.map((block, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex-1 border border-gray-700 rounded flex items-center justify-center text-gray-500 ${!block ? "bg-[#0F1228]" : "bg-[#1A1D33]"}`}
+                    >
+                      {block || "Drop"}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={handleResetWorkspace}
+                  className="mt-2 px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-sm"
+                >
+                  Reset Workspace
+                </button>
+              </div>
+
+              <div className="mt-1 bg-[#0F1228] p-1 rounded font-mono text-green-300 text-[14px] overflow-x-auto h-10">
+                {droppedBlocks.filter((b) => b).join(" ")}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRunCode}
+                  className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 rounded font-semibold"
+                >
+                  Run Code
+                </button>
+                <button className="flex-1 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 rounded font-semibold">
+                  Hint
+                </button>
+              </div>
+
+              {/* Next Level / MCQ */}
+              <div className="flex justify-center mt-4">
+                {level < totalLevels ? (
+                  <button
+                    onClick={handleNextLevel}
+                    className="w-12 h-12 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 font-semibold shadow-lg"
+                  >
+                    <ArrowRight size={24} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => navigate("/McqPage1", { state: { xp, selectedLanguage } })}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold"
+                  >
+                    Go to MCQ
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {gameMessage && (
+            <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+              <div className="bg-[#1C1F3C] p-6 rounded-xl shadow-xl text-center max-w-sm">
+                <p className="text-white text-lg mb-4">{gameMessage}</p>
+                <button
+                  onClick={() => setGameMessage("")}
+                  className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded font-semibold"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
-
-
-
-
-
-
-
 

@@ -9,7 +9,6 @@ export default function SignUpPage() {
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
-  const [language, setLanguage] = useState("Visual Basic");
   const [avatar, setAvatar] = useState("👾");
   const [category, setCategory] = useState("Robots");
   const [error, setError] = useState("");
