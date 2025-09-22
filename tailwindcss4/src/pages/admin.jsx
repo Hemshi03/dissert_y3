@@ -1,267 +1,453 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import { db } from "../firebase.config";
 import {
   collection,
   doc,
   getDocs,
-  addDoc,
-  updateDoc,
+  setDoc,
   deleteDoc,
 } from "firebase/firestore";
-import { db } from "../firebase.config";
+import { FaUsers, FaBook, FaAward } from "react-icons/fa";
 
-const TABS = ["users", "badges", "achievements", "chapters", "levels", "questions"];
-const USER_SUBTABS = ["progress", "userBadges", "userAchievements"];
+export default function AdminDashboard() {
+  const [activeSection, setActiveSection] = useState("users");
+  const [users, setUsers] = useState([]);
+  const [badges, setBadges] = useState([]);
+  const [chapterForms, setChapterForms] = useState([]);
+  const [message, setMessage] = useState("");
+  const [levelJsonInputs, setLevelJsonInputs] = useState({}); // For safe JSON typing
 
-const AdminDashboard = () => {
-  const [activeTab, setActiveTab] = useState("users");
-  const [data, setData] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [userSubTab, setUserSubTab] = useState("progress");
-  const [userSubData, setUserSubData] = useState([]);
-  const [editingRecord, setEditingRecord] = useState({});
-  const [editingId, setEditingId] = useState(null);
-
-  // ---------------- Fetch Main Collection ----------------
-  const fetchData = async (tab) => {
-    const snapshot = await getDocs(collection(db, tab));
-    setData(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+  // --- FETCH USERS ---
+  const fetchUsers = async () => {
+    const snap = await getDocs(collection(db, "users"));
+    setUsers(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
   };
 
-  useEffect(() => {
-    if (!selectedUser) fetchData(activeTab);
-  }, [activeTab, selectedUser]);
-
-  // ---------------- Main Collection CRUD ----------------
-  const addRecord = async (tab) => {
-    if (!editingRecord || Object.keys(editingRecord).length === 0) return alert("Fill fields!");
-    await addDoc(collection(db, tab), editingRecord);
-    setEditingRecord({});
-    fetchData(tab);
+  // --- FETCH BADGES ---
+  const fetchBadges = async () => {
+    const snap = await getDocs(collection(db, "badges"));
+    setBadges(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
   };
 
-  const updateRecord = async (tab, id) => {
-    await updateDoc(doc(db, tab, id), editingRecord);
-    setEditingRecord({});
-    setEditingId(null);
-    fetchData(tab);
+  // --- FETCH CHAPTERS + LEVELS ---
+  const fetchChapters = async () => {
+    const snap = await getDocs(collection(db, "chapters"));
+    const chapData = await Promise.all(
+      snap.docs.map(async (docSnap) => {
+        const data = docSnap.data();
+        const levelsSnap = await getDocs(collection(db, "chapters", docSnap.id, "levels"));
+        const levels = levelsSnap.docs.map((l) => ({ id: l.id, ...l.data() }));
+        return { id: docSnap.id, ...data, levels };
+      })
+    );
+    setChapterForms(chapData);
+
+    // Initialize JSON input state
+    const jsonInputs = {};
+    chapData.forEach((chapter) => {
+      chapter.levels.forEach((level) => {
+        jsonInputs[level.id] = {
+          answer: JSON.stringify(level.answer || {}, null, 2),
+          languageBlocks: JSON.stringify(level.languageBlocks || {}, null, 2),
+        };
+      });
+    });
+    setLevelJsonInputs(jsonInputs);
   };
 
-  const deleteRecordById = async (tab, id) => {
-    await deleteDoc(doc(db, tab, id));
-    fetchData(tab);
-  };
-
-  // ---------------- User Subcollection CRUD ----------------
-  const fetchUserSubData = async (sub) => {
-    if (!selectedUser) return;
-    const snapshot = await getDocs(collection(db, "users", selectedUser.id, sub));
-    setUserSubData(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-  };
-
-  const addUserSub = async (sub) => {
-    if (!editingRecord || Object.keys(editingRecord).length === 0) return alert("Fill fields!");
-    await addDoc(collection(db, "users", selectedUser.id, sub), editingRecord);
-    setEditingRecord({});
-    fetchUserSubData(sub);
-  };
-
-  const updateUserSub = async (sub, id) => {
-    await updateDoc(doc(db, "users", selectedUser.id, sub, id), editingRecord);
-    setEditingRecord({});
-    setEditingId(null);
-    fetchUserSubData(sub);
-  };
-
-  const deleteUserSub = async (sub, id) => {
-    await deleteDoc(doc(db, "users", selectedUser.id, sub, id));
-    fetchUserSubData(sub);
-  };
-
-  // ---------------- Dynamic Form ----------------
-  const renderForm = (record = {}, isSub = false) => {
-    const keys = Object.keys(record).length ? Object.keys(record) : ["name"];
-    return (
-      <div className="mb-4 border p-4 rounded bg-gray-50">
-        {keys.map((key) => (
-          <div key={key} className="mb-2">
-            <label className="block font-semibold">{key}</label>
-            <input
-              className="w-full border px-2 py-1 rounded"
-              type="text"
-              value={editingRecord[key] || ""}
-              onChange={(e) =>
-                setEditingRecord({ ...editingRecord, [key]: e.target.value })
-              }
-            />
-          </div>
-        ))}
-        <button
-          className="bg-green-600 text-white px-4 py-2 rounded mr-2"
-          onClick={() =>
-            editingId
-              ? isSub
-                ? updateUserSub(userSubTab, editingId)
-                : updateRecord(activeTab, editingId)
-              : isSub
-              ? addUserSub(userSubTab)
-              : addRecord(activeTab)
-          }
-        >
-          {editingId ? "Update" : "Add"}
-        </button>
-        {editingId && (
-          <button
-            className="bg-gray-500 text-white px-4 py-2 rounded"
-            onClick={() => {
-              setEditingId(null);
-              setEditingRecord({});
-            }}
-          >
-            Cancel
-          </button>
-        )}
-      </div>
+  // --- HANDLE FORM CHANGE ---
+  const handleChapterChange = (chapterId, field, value) => {
+    setChapterForms((prev) =>
+      prev.map((c) => (c.id === chapterId ? { ...c, [field]: value } : c))
     );
   };
 
-  const renderTable = (rows, isSub = false) => (
-    <table className="w-full bg-white shadow rounded mb-4">
-      <thead>
-        <tr>
-          <th className="p-2 border">ID</th>
-          <th className="p-2 border">Data</th>
-          <th className="p-2 border">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((item) => (
-          <tr key={item.id}>
-            <td className="p-2 border">{item.id}</td>
-            <td className="p-2 border">
-              {Object.entries(item)
-                .filter(([key]) => key !== "id")
-                .map(([key, val]) => (
-                  <div key={key}>
-                    <strong>{key}:</strong> {val}
-                  </div>
-                ))}
-            </td>
-            <td className="p-2 border">
-              <button
-                className="bg-blue-500 text-white px-2 py-1 mr-2 rounded"
-                onClick={() => {
-                  setEditingId(item.id);
-                  setEditingRecord({ ...item });
-                }}
-              >
-                Edit
-              </button>
-              <button
-                className="bg-red-500 text-white px-2 py-1 rounded"
-                onClick={() =>
-                  isSub
-                    ? deleteUserSub(userSubTab, item.id)
-                    : deleteRecordById(activeTab, item.id)
-                }
-              >
-                Delete
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+  const handleLevelChange = (chapterId, levelId, field, value) => {
+    setChapterForms((prev) =>
+      prev.map((c) =>
+        c.id === chapterId
+          ? {
+              ...c,
+              levels: c.levels.map((l) =>
+                l.id === levelId ? { ...l, [field]: value } : l
+              ),
+            }
+          : c
+      )
+    );
+  };
+
+  // --- SAVE CHAPTER + LEVEL ---
+  const saveChapter = async (chapter) => {
+    if (!chapter.customId) {
+      setMessage("Please provide a custom Chapter ID before saving!");
+      return;
+    }
+    const chapterId = chapter.customId;
+
+    await setDoc(doc(db, "chapters", chapterId), {
+      storytext: chapter.storytext,
+      totalxp: Number(chapter.totalxp),
+      selectedLanguage: chapter.selectedLanguage,
+    });
+
+    for (const level of chapter.levels) {
+      if (!level.customId) {
+        setMessage("Please provide a custom Level ID for all levels!");
+        return;
+      }
+      const levelId = level.customId;
+
+      let answerObj = {};
+      let blocksObj = {};
+      try {
+        answerObj = JSON.parse(levelJsonInputs[level.id]?.answer || "{}");
+        blocksObj = JSON.parse(levelJsonInputs[level.id]?.languageBlocks || "{}");
+      } catch (err) {
+        setMessage(`Invalid JSON in level ${levelId}: ${err.message}`);
+        return;
+      }
+
+      await setDoc(doc(db, "chapters", chapterId, "levels", levelId), {
+        description: level.description,
+        questionText: level.questionText,
+        type: level.type,
+        xpReward: Number(level.xpReward),
+        answer: answerObj,
+        languageBlocks: blocksObj,
+      });
+    }
+
+    setMessage("Chapter & levels saved successfully!");
+    fetchChapters();
+  };
+
+  // --- DELETE LEVEL ---
+  const deleteLevel = async (chapterId, levelId) => {
+    await deleteDoc(doc(db, "chapters", chapterId, "levels", levelId));
+    fetchChapters();
+  };
+
+  // --- DELETE CHAPTER INCLUDING LEVELS ---
+  const deleteChapter = async (chapterId) => {
+    const levelsSnap = await getDocs(collection(db, "chapters", chapterId, "levels"));
+    for (const l of levelsSnap.docs) {
+      await deleteDoc(doc(db, "chapters", chapterId, "levels", l.id));
+    }
+    await deleteDoc(doc(db, "chapters", chapterId));
+    fetchChapters();
+  };
+
+  // --- SAVE BADGE ---
+  const saveBadge = async (badge) => {
+    if (!badge.customId) {
+      setMessage("Please provide a custom Badge ID before saving!");
+      return;
+    }
+    const badgeId = badge.customId;
+
+    await setDoc(doc(db, "badges", badgeId), {
+      name: badge.name,
+      description: badge.description,
+      iconUrl: badge.iconUrl,
+    });
+
+    setMessage("Badge saved successfully!");
+    fetchBadges();
+  };
+
+  const deleteBadge = async (badgeId) => {
+    await deleteDoc(doc(db, "badges", badgeId));
+    fetchBadges();
+  };
+
+  useEffect(() => {
+    fetchUsers();
+    fetchBadges();
+    fetchChapters();
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-800 text-white p-4">
-        <h2 className="text-xl font-bold mb-6">Admin Dashboard</h2>
+      <div className="w-64 bg-gray-800 text-white p-4">
+        <h1 className="text-xl font-bold mb-6">Admin Dashboard</h1>
         <ul>
-          {TABS.map((tab) => (
-            <li
-              key={tab}
-              className={`p-2 cursor-pointer ${
-                activeTab === tab ? "bg-gray-600" : ""
-              }`}
-              onClick={() => {
-                setActiveTab(tab);
-                setSelectedUser(null);
-                setEditingId(null);
-                setEditingRecord({});
-              }}
-            >
-              {tab}
-            </li>
-          ))}
+          <li
+            className={`p-2 cursor-pointer ${activeSection === "users" && "bg-gray-700"}`}
+            onClick={() => setActiveSection("users")}
+          >
+            <FaUsers className="inline mr-2" /> Users
+          </li>
+          <li
+            className={`p-2 cursor-pointer ${activeSection === "badges" && "bg-gray-700"}`}
+            onClick={() => setActiveSection("badges")}
+          >
+            <FaAward className="inline mr-2" /> Badges
+          </li>
+          <li
+            className={`p-2 cursor-pointer ${activeSection === "chapters" && "bg-gray-700"}`}
+            onClick={() => setActiveSection("chapters")}
+          >
+            <FaBook className="inline mr-2" /> Chapters
+          </li>
         </ul>
-      </aside>
+      </div>
 
-      {/* Main Content */}
-      <main className="flex-1 p-6 overflow-auto">
-        {/* Users Tab */}
-        {activeTab === "users" && !selectedUser && (
+      {/* Main content */}
+      <div className="flex-1 p-6 overflow-auto">
+        {message && <div className="bg-green-200 p-2 rounded mb-4">{message}</div>}
+
+        {/* Users Section */}
+        {activeSection === "users" && (
           <div>
-            <h2 className="text-2xl font-bold mb-4">Users</h2>
-            {renderForm()}
-            {renderTable(data)}
+            <h2 className="text-xl font-bold mb-4">Users (Read-only)</h2>
+            <table className="w-full table-auto border border-gray-300">
+              <thead className="bg-gray-200">
+                <tr>
+                  <th className="border px-2 py-1">Username</th>
+                  <th className="border px-2 py-1">Email</th>
+                  <th className="border px-2 py-1">Role</th>
+                  <th className="border px-2 py-1">Total XP</th>
+                  <th className="border px-2 py-1">Mana</th>
+                  <th className="border px-2 py-1">Current Chapter</th>
+                  <th className="border px-2 py-1">Rank</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td className="border px-2 py-1">{u.username}</td>
+                    <td className="border px-2 py-1">{u.email}</td>
+                    <td className="border px-2 py-1">{u.role}</td>
+                    <td className="border px-2 py-1">{u.total_xp}</td>
+                    <td className="border px-2 py-1">{u.mana}</td>
+                    <td className="border px-2 py-1">{u.current_chapter}</td>
+                    <td className="border px-2 py-1">{u.rank}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {/* User Detail */}
-        {activeTab === "users" && selectedUser && (
+        {/* Badges Section */}
+        {activeSection === "badges" && (
           <div>
+            <h2 className="text-xl font-bold mb-4">Badges</h2>
             <button
-              className="mb-4 bg-gray-500 text-white px-4 py-2 rounded"
-              onClick={() => {
-                setSelectedUser(null);
-                setUserSubData([]);
-              }}
+              className="bg-green-500 text-white px-3 py-1 rounded mb-4"
+              onClick={() =>
+                setBadges((prev) => [
+                  ...prev,
+                  { id: "temp-" + Date.now(), customId: "", name: "", description: "", iconUrl: "" },
+                ])
+              }
             >
-              Back to Users
+              + Add New Badge
             </button>
-            <h2 className="text-2xl font-bold mb-4">
-              User: {selectedUser.name}
-            </h2>
 
-            {/* Subcollection Tabs */}
-            <div className="flex gap-4 mb-4">
-              {USER_SUBTABS.map((sub) => (
-                <button
-                  key={sub}
-                  className={`px-4 py-2 rounded ${
-                    userSubTab === sub
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-300"
-                  }`}
-                  onClick={() => {
-                    setUserSubTab(sub);
-                    fetchUserSubData(sub);
-                  }}
-                >
-                  {sub}
+            {badges.map((badge) => (
+              <div key={badge.id} className="border p-4 mb-4 rounded bg-white">
+                <input
+                  className="border p-1 mr-2 w-32"
+                  placeholder="Custom Badge ID"
+                  value={badge.customId || ""}
+                  onChange={(e) =>
+                    setBadges((prev) =>
+                      prev.map((b) => (b.id === badge.id ? { ...b, customId: e.target.value } : b))
+                    )
+                  }
+                />
+                <input
+                  className="border p-1 mr-2 w-64"
+                  placeholder="Badge Name"
+                  value={badge.name}
+                  onChange={(e) =>
+                    setBadges((prev) =>
+                      prev.map((b) => (b.id === badge.id ? { ...b, name: e.target.value } : b))
+                    )
+                  }
+                />
+                <input
+                  className="border p-1 mr-2 w-96"
+                  placeholder="Description"
+                  value={badge.description}
+                  onChange={(e) =>
+                    setBadges((prev) =>
+                      prev.map((b) => (b.id === badge.id ? { ...b, description: e.target.value } : b))
+                    )
+                  }
+                />
+                <input
+                  className="border p-1 mr-2 w-64"
+                  placeholder="Icon URL"
+                  value={badge.iconUrl}
+                  onChange={(e) =>
+                    setBadges((prev) =>
+                      prev.map((b) => (b.id === badge.id ? { ...b, iconUrl: e.target.value } : b))
+                    )
+                  }
+                />
+                <button className="bg-blue-600 text-white px-3 py-1 rounded" onClick={() => saveBadge(badge)}>
+                  Save Badge
                 </button>
-              ))}
-            </div>
-
-            {renderForm({}, true)}
-            {renderTable(userSubData, true)}
+                <button
+                  className="bg-red-500 text-white px-3 py-1 rounded ml-2"
+                  onClick={() => deleteBadge(badge.customId || badge.id)}
+                >
+                  Delete Badge
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Non-User Tabs */}
-        {activeTab !== "users" && (
+        {/* Chapters Section */}
+        {activeSection === "chapters" && (
           <div>
-            <h2 className="text-2xl font-bold mb-4">{activeTab}</h2>
-            {renderForm()}
-            {renderTable(data)}
+            <h2 className="text-xl font-bold mb-4">Chapters</h2>
+            <button
+              className="bg-green-500 text-white px-3 py-1 rounded mb-4"
+              onClick={() =>
+                setChapterForms((prev) => [
+                  ...prev,
+                  { id: "temp-" + Date.now(), customId: "", storytext: "", totalxp: 0, selectedLanguage: [], levels: [] },
+                ])
+              }
+            >
+              + Add New Chapter
+            </button>
+
+            {chapterForms.map((chapter) => (
+              <div key={chapter.id} className="border p-4 mb-4 rounded bg-white">
+                <input
+                  className="border p-1 mr-2 w-32"
+                  placeholder="Custom Chapter ID"
+                  value={chapter.customId || ""}
+                  onChange={(e) => handleChapterChange(chapter.id, "customId", e.target.value)}
+                />
+                <input
+                  className="border p-1 mr-2 w-64"
+                  placeholder="Story Text"
+                  value={chapter.storytext}
+                  onChange={(e) => handleChapterChange(chapter.id, "storytext", e.target.value)}
+                />
+                <input
+                  className="border p-1 mr-2 w-32"
+                  placeholder="Total XP"
+                  type="number"
+                  value={chapter.totalxp}
+                  onChange={(e) => handleChapterChange(chapter.id, "totalxp", e.target.value)}
+                />
+                <input
+                  className="border p-1 mr-2 w-64"
+                  placeholder="Languages (comma)"
+                  value={chapter.selectedLanguage.join(",")}
+                  onChange={(e) =>
+                    handleChapterChange(chapter.id, "selectedLanguage", e.target.value.split(","))
+                  }
+                />
+                <button className="bg-blue-600 text-white px-3 py-1 rounded" onClick={() => saveChapter(chapter)}>
+                  Save Chapter
+                </button>
+                <button
+                  className="bg-red-500 text-white px-3 py-1 rounded ml-2"
+                  onClick={() => deleteChapter(chapter.customId || chapter.id)}
+                >
+                  Delete Chapter
+                </button>
+
+                <div className="mt-2">
+                  <h4 className="font-bold mb-2">Levels</h4>
+                  <button
+                    className="bg-green-300 px-2 py-1 rounded mb-2"
+                    onClick={() =>
+                      handleChapterChange(chapter.id, "levels", [
+                        ...chapter.levels,
+                        { id: "temp-" + Date.now(), customId: "", description: "", questionText: "", type: "", xpReward: 0, answer: {}, languageBlocks: {} },
+                      ])
+                    }
+                  >
+                    + Add Level
+                  </button>
+
+                  {chapter.levels.map((level) => (
+                    <div key={level.id} className="border p-2 mb-2 rounded bg-gray-50">
+                      <input
+                        className="border p-1 mr-2 w-32"
+                        placeholder="Custom Level ID"
+                        value={level.customId || ""}
+                        onChange={(e) => handleLevelChange(chapter.id, level.id, "customId", e.target.value)}
+                      />
+                      <input
+                        className="border p-1 mr-2 w-64"
+                        placeholder="Level Description"
+                        value={level.description}
+                        onChange={(e) => handleLevelChange(chapter.id, level.id, "description", e.target.value)}
+                      />
+                      <input
+                        className="border p-1 mr-2 w-64"
+                        placeholder="Question Text"
+                        value={level.questionText}
+                        onChange={(e) => handleLevelChange(chapter.id, level.id, "questionText", e.target.value)}
+                      />
+                      <input
+                        className="border p-1 mr-2 w-32"
+                        placeholder="XP"
+                        type="number"
+                        value={level.xpReward}
+                        onChange={(e) => handleLevelChange(chapter.id, level.id, "xpReward", e.target.value)}
+                      />
+                      <input
+                        className="border p-1 mr-2 w-64"
+                        placeholder="Type"
+                        value={level.type}
+                        onChange={(e) => handleLevelChange(chapter.id, level.id, "type", e.target.value)}
+                      />
+
+                      {/* JSON inputs for Answer & Language Blocks */}
+                      <textarea
+                        className="border p-1 mr-2 w-full mb-1"
+                        placeholder="Answer JSON"
+                        value={levelJsonInputs[level.id]?.answer || "{}"}
+                        onChange={(e) =>
+                          setLevelJsonInputs((prev) => ({
+                            ...prev,
+                            [level.id]: { ...prev[level.id], answer: e.target.value },
+                          }))
+                        }
+                      />
+                      <textarea
+                        className="border p-1 mr-2 w-full mb-1"
+                        placeholder="Language Blocks JSON"
+                        value={levelJsonInputs[level.id]?.languageBlocks || "{}"}
+                        onChange={(e) =>
+                          setLevelJsonInputs((prev) => ({
+                            ...prev,
+                            [level.id]: { ...prev[level.id], languageBlocks: e.target.value },
+                          }))
+                        }
+                      />
+
+                      <button
+                        className="bg-red-400 px-2 py-1 rounded ml-2"
+                        onClick={() => deleteLevel(chapter.customId || chapter.id, level.id)}
+                      >
+                        Delete Level
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
-};
+}
 
-export default AdminDashboard;
+
+
 

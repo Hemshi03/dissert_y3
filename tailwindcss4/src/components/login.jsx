@@ -1,15 +1,16 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { auth } from "../firebase.config";
+import { auth, db } from "../firebase.config";
 import {
   signInWithEmailAndPassword,
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
 } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
-export default function LoginPage() {
+export default function LoginPage({ setUserProgress }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
@@ -29,7 +30,36 @@ export default function LoginPage() {
 
     setPersistence(auth, persistence)
       .then(() => signInWithEmailAndPassword(auth, email, password))
-      .then(() => navigate("/blank"))
+      .then(async (userCredential) => {
+        const user = userCredential.user;
+
+        // Fetch user progress
+        const userRef = doc(db, "user_progress", user.uid);
+        let userSnap = await getDoc(userRef);
+        let progressData;
+
+        if (userSnap.exists()) {
+          progressData = userSnap.data();
+        } else {
+          // If missing, initialize top-level progress
+          await setDoc(userRef, {
+            uid: user.uid,
+            completedLevels: [],
+            completedMCQs: [],
+            currentChapter: 1,
+            hintsUsed: 0,
+            mana: 100,
+            rank: "Novice",
+            totalxp: 0,
+            createdAt: new Date(),
+          });
+          progressData = (await getDoc(userRef)).data();
+        }
+
+        if (setUserProgress) setUserProgress(progressData);
+
+        navigate("/blank"); // Redirect after login
+      })
       .catch((err) => setError(err.message));
   };
 
@@ -115,7 +145,7 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* Modal */}
+      {/* Modal for password reset */}
       {modalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-sm p-6 bg-gray-800 rounded-lg shadow-lg">
@@ -147,3 +177,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+

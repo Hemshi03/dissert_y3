@@ -1,0 +1,72 @@
+{
+    "ch1": {
+        "L01": {
+            "Visual Basic": [
+                "Use 'Dim' to declare a variable.",
+                "Name your variable RoboVar.",
+                "Assign it the type String."
+            ],
+            "Java": [
+                "Declare variable with a type first.",
+                "The variable name should be roboVar.",
+                "Use String and double quotes."
+            ],
+            "Python": [
+                "Variable name should be first.",
+                "Assign a string value in quotes for texts.",
+                "Assign a value to a variable name (robo_var)."
+            ]
+        },
+        "L02": {
+            "Visual Basic": [
+                "Use 'Dim' again to declare variables.",
+                "The variable name should be treasureCode.",
+                "Assign it the type Integer."
+            ],
+            "Java": [
+                "Use int for whole numbers.",
+                "The variable name should be treasureCode.",
+                "End the statement with a semicolon."
+            ],
+            "Python": [
+                "In Python, no type declaration is needed.",
+                "Use the name treasureCode.",
+                "Assign it a starting value like 0."
+            ]
+        },
+        "L03": {
+            "Visual Basic": [
+                "Use 'Dim' to declare a Boolean variable.",
+                "The variable name should be Unlocked.",
+                "Assign it the type Boolean."
+            ],
+            "Java": [
+                "Use boolean (lowercase) for true/false values.",
+                "The variable name should be Unlocked.",
+                "Assign it true or false and end with a semicolon."
+            ],
+            "Python": [
+                "Simply assign Unlocked = True or False.",
+                "Remember Python uses capital T for True.",
+                "No type declaration needed."
+            ]
+        },
+        "L04": {
+            "Visual Basic": [
+                "You can declare and assign in the same line.",
+                "The variable name should be portalCode.",
+                "Assign it the type Integer and a value like 123."
+            ],
+            "Java": [
+                "Declare and assign in one step.",
+                "Use int portalCode = 123;",
+                "Don’t forget the semicolon."
+            ],
+            "Python": [
+                "Just write portal_code = 123.",
+                "Use snake_case for variable names.",
+                "No type declaration required."
+            ]
+        }
+    }
+}
