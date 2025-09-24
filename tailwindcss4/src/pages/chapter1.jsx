@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import interact from "interactjs";
-import { ArrowRight, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { db, auth } from "../firebase.config";
 import {
   doc,
@@ -31,6 +31,8 @@ export default function Chapter1() {
   const [completedLevels, setCompletedLevels] = useState([]);
   const [currentHintIndex, setCurrentHintIndex] = useState(0);
   const [currentHint, setCurrentHint] = useState("");
+  const [levelCompletionStates, setLevelCompletionStates] = useState({});
+  const [isProcessingCompletion, setIsProcessingCompletion] = useState(false);
 
   const navigate = useNavigate();
 
@@ -50,7 +52,7 @@ export default function Chapter1() {
     return array;
   };
 
-  // 🔹 Fetch chapter and user progress
+  // Fetch chapter and user progress
   useEffect(() => {
     const fetchChapterAndUserProgress = async () => {
       try {
@@ -68,17 +70,33 @@ export default function Chapter1() {
         if (chapterSnap.exists()) {
           setChapterData(chapterSnap.data());
           setLevels(levelsData);
-          setLevelKeys(Object.keys(levelsData).sort());
-        }
+          const sortedLevelKeys = Object.keys(levelsData).sort();
+          setLevelKeys(sortedLevelKeys);
 
-        const uid = auth.currentUser.uid;
-        const userRef = doc(db, "user_progress", uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const userData = userSnap.data();
-          setCompletedLevels(userData.completedLevels || []);
-          setXp(userData.totalxp || 0);
-          setMana(userData.mana ?? 100);
+          const uid = auth.currentUser.uid;
+          const userRef = doc(db, "user_progress", uid);
+          const userSnap = await getDoc(userRef);
+
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            const userCompletedLevels = userData.completedLevels || [];
+
+            setCompletedLevels(userCompletedLevels);
+            setXp(userData.totalxp || 0);
+            setMana(userData.mana ?? 100);
+
+            const completionStates = {};
+            userCompletedLevels.forEach(levelId => {
+              completionStates[levelId] = true;
+            });
+            setLevelCompletionStates(completionStates);
+
+            const ch1CompletedLevels = userCompletedLevels.filter(id => id.startsWith('L'));
+            const nextLevelIndex = Math.min(ch1CompletedLevels.length, sortedLevelKeys.length - 1);
+
+            console.log(`🎯 User has completed ${ch1CompletedLevels.length} levels. Resuming at level ${nextLevelIndex + 1}`);
+            setCurrentLevelIndex(nextLevelIndex);
+          }
         }
       } catch (err) {
         console.error("Error fetching chapter or user progress:", err);
@@ -88,36 +106,51 @@ export default function Chapter1() {
     fetchChapterAndUserProgress();
   }, []);
 
-  // 🔹 Mark level as completed
   const markLevelCompleted = async (levelId, xpReward, manaReward = 0) => {
+    if (isProcessingCompletion || levelCompletionStates[levelId]) return false;
+
+    setIsProcessingCompletion(true);
+
     try {
       const uid = auth.currentUser.uid;
       const userRef = doc(db, "user_progress", uid);
 
-      await runTransaction(db, async (transaction) => {
+      const result = await runTransaction(db, async (transaction) => {
         const userDoc = await transaction.get(userRef);
-        if (!userDoc.exists()) throw "User does not exist!";
+        if (!userDoc.exists()) throw new Error("User document does not exist!");
 
-        const prevCompleted = userDoc.data().completedLevels || [];
-        const prevXp = userDoc.data().totalxp || 0;
-        const prevMana = userDoc.data().mana ?? 100;
+        const userData = userDoc.data();
+        const prevCompleted = userData.completedLevels || [];
+        const prevXp = userData.totalxp || 0;
+        const prevMana = userData.mana ?? 100;
 
-        if (!prevCompleted.includes(levelId)) {
-          transaction.update(userRef, {
-            completedLevels: arrayUnion(levelId),
-            totalxp: prevXp + xpReward,
-            mana: prevMana + manaReward,
-          });
-        }
+        if (prevCompleted.includes(levelId)) return { shouldUpdate: false };
+
+        transaction.update(userRef, {
+          completedLevels: arrayUnion(levelId),
+          totalxp: prevXp + xpReward,
+          mana: prevMana + manaReward,
+          lastUpdated: new Date().toISOString()
+        });
+
+        return { shouldUpdate: true, newXp: prevXp + xpReward, newMana: prevMana + manaReward };
       });
 
-      setCompletedLevels((prev) =>
-        prev.includes(levelId) ? prev : [...prev, levelId]
-      );
-      setXp((prev) => prev + xpReward);
-      setMana((prev) => prev + manaReward);
+      if (result.shouldUpdate) {
+        setLevelCompletionStates(prev => ({ ...prev, [levelId]: true }));
+        setCompletedLevels(prev => [...prev, levelId]);
+        setXp(result.newXp);
+        setMana(result.newMana);
+        return true;
+      }
+
+      return false;
     } catch (err) {
-      console.error("Error updating completedLevels:", err);
+      console.error("Error marking level completed:", err);
+      setGameMessage("❌ Error saving progress. Please try again.");
+      return false;
+    } finally {
+      setIsProcessingCompletion(false);
     }
   };
 
@@ -132,10 +165,10 @@ export default function Chapter1() {
     }
 
     setShowIntro(false);
-    setCurrentLevelIndex(0);
     setDroppedBlocks([]);
     setPortalActivated(false);
-    loadLevel(0);
+    setGameMessage("");
+    loadLevel(currentLevelIndex);
   };
 
   const loadLevel = (index) => {
@@ -149,27 +182,22 @@ export default function Chapter1() {
     setDroppedBlocks(Array(blocks.length).fill(""));
     setShuffledBlocks(shuffleArray(blocks));
     setPortalActivated(false);
-
-    // Reset hints
+    setGameMessage("");
     setCurrentHintIndex(0);
     setCurrentHint("");
 
-    // 🔧 Update scene level without resetting (preserves chest)
     if (sceneInstance) {
       if (sceneInstance.setLevel) sceneInstance.setLevel(index + 1);
-      if (sceneInstance.robotSpeechContainer) {
-        sceneInstance.robotSpeechContainer.destroy();
-      }
+      if (sceneInstance.robotSpeechContainer) sceneInstance.robotSpeechContainer.destroy();
     }
   };
 
-  const handleRunCode = () => {
+  const handleRunCode = async () => {
     const levelId = levelKeys[currentLevelIndex];
     const levelData = levels[levelId];
     if (!levelData) return;
 
-    const allFilled = droppedBlocks.every((b) => b);
-    if (!allFilled) {
+    if (!droppedBlocks.every((b) => b)) {
       setGameMessage("⚠️ Fill all slots before running!");
       return;
     }
@@ -181,73 +209,49 @@ export default function Chapter1() {
       return;
     }
 
-    const cleanExpected = expected
-      .replace(/\\n/g, "")
-      .replace(/\n/g, "")
-      .trim()
-      .replace(/\s+/g, " ");
+    const cleanExpected = expected.replace(/\\n/g, "").replace(/\n/g, "").trim().replace(/\s+/g, " ");
     const userCode = droppedBlocks.join(" ").trim().replace(/\s+/g, " ");
 
     if (userCode === cleanExpected) {
       const xpReward = levelData.xpReward || 0;
       const manaReward = levelData.manaReward || 0;
-      if (!completedLevels.includes(levelId))
-        markLevelCompleted(levelId, xpReward, manaReward);
 
-      // 🔧 ENHANCED: Robot speech animation
-      if (sceneInstance && typeof sceneInstance.showSpeech === "function") {
-        setTimeout(() => sceneInstance.showSpeech(currentLevelIndex + 1), 50);
+      const wasCompleted = await markLevelCompleted(levelId, xpReward, manaReward);
+
+      if (wasCompleted) {
+        setGameMessage(`✅ Correct! +${xpReward} XP${manaReward > 0 ? ` +${manaReward} Mana` : ''}! Click Next Level to continue.`);
+      } else {
+        setGameMessage("✅ Correct! (Already completed) Click Next Level to continue.");
       }
 
-      const currentLevel = currentLevelIndex + 1;
+      if (sceneInstance?.showSpeech) setTimeout(() => sceneInstance.showSpeech(currentLevelIndex + 1), 50);
 
-      // 🔧 ENHANCED: Level-specific animations from hardcoded version
-      if (currentLevel === 2 && sceneInstance) {
-        // Level 2: Move robot to chest and show chest
-        if (sceneInstance.moveRobotToChest) sceneInstance.moveRobotToChest();
-        if (sceneInstance.showChest) sceneInstance.showChest();
-      }
+      if (currentLevelIndex + 1 === 2 && sceneInstance?.moveRobotToChest) sceneInstance.moveRobotToChest();
+      if (currentLevelIndex + 1 === 2 && sceneInstance?.showChest) sceneInstance.showChest();
+      if (currentLevelIndex + 1 === 3 && sceneInstance?.showChest) sceneInstance.showChest(true);
 
-      if (currentLevel === 3 && sceneInstance && sceneInstance.showChest) {
-        // Level 3: Show chest as unlocked
-        sceneInstance.showChest(true);
-      }
-
-      // 🔧 ENHANCED: Portal activation for level 4
-      if (currentLevel === 4 && sceneInstance && typeof sceneInstance.showPortal === "function") {
+      if (currentLevelIndex === levelKeys.length - 1 && sceneInstance?.showPortal) {
         sceneInstance.showPortal();
         setPortalActivated(true);
         setGameMessage("✅ Portal activated! Click the MCQ Quiz button to proceed.");
-        return;
       }
 
-      if (currentLevelIndex >= levelKeys.length - 1) {
-        setPortalActivated(true);
-        setGameMessage("✅ All levels completed! Click MCQ Quiz.");
-      } else {
-        setGameMessage("✅ Correct! Click Next Level to continue.");
-      }
     } else {
       setGameMessage("❌ Oops! Check the order of your blocks.");
     }
   };
 
-  const handleResetWorkspace = () => {
-    setDroppedBlocks(Array(droppedBlocks.length).fill(""));
-  };
-
+  const handleResetWorkspace = () => setDroppedBlocks(Array(droppedBlocks.length).fill(""));
   const handleNextLevel = () => {
     if (currentLevelIndex < levelKeys.length - 1) {
       const newIndex = currentLevelIndex + 1;
       setCurrentLevelIndex(newIndex);
       loadLevel(newIndex);
     } else {
-      if (portalActivated)
-        navigate("/McqPage1", { state: { xp, mana, selectedLanguage } });
+      portalActivated ? navigate("/McqPage1") : setGameMessage("⚠️ Complete the last level correctly to activate the portal!");
     }
   };
 
-  // 🔹 Get hints for current level
   const getCurrentLevelHints = () => {
     const chapterId = "ch1";
     const levelId = levelKeys[currentLevelIndex];
@@ -268,14 +272,13 @@ export default function Chapter1() {
     setCurrentHint(levelHints[currentHintIndex]);
     setCurrentHintIndex(currentHintIndex + 1);
 
-    // Update Firestore for dashboard
     try {
       const uid = auth.currentUser.uid;
       const userRef = doc(db, "user_progress", uid);
 
       await runTransaction(db, async (transaction) => {
         const userDoc = await transaction.get(userRef);
-        if (!userDoc.exists()) throw "User not found";
+        if (!userDoc.exists()) throw new Error("User not found");
 
         const prevHints = userDoc.data().hintsUsed || 0;
         const prevMana = userDoc.data().mana ?? 100;
@@ -292,7 +295,6 @@ export default function Chapter1() {
     }
   };
 
-  // 🔹 Enhanced drag & drop with removal capability
   useEffect(() => {
     if (!showIntro && selectedLanguage && shuffledBlocks.length > 0) {
       interact(".draggable-block").draggable({
@@ -358,10 +360,27 @@ export default function Chapter1() {
   );
 
   return (
-    <div className="bg-[#0A0F28] text-white min-h-screen flex flex-col">
+    <div className="text-white min-h-screen flex flex-col">
       {showIntro ? (
-        <div className="relative flex flex-col items-center justify-center text-center h-screen px-4">
-          <div className="absolute inset-0 bg-black/60" />
+        <div className="relative flex flex-col items-center justify-center text-center min-h-screen px-4">
+          <img
+            src="/intro_bg.png"
+            alt="Background"
+            className="absolute inset-0 w-full h-full object-cover -z-20"
+            style={{ filter: "blur(2px)" }}
+          />
+          {/* Robot image on the left side */}
+          <div className="absolute left-10 bottom-10 z-10">
+            <img
+              src="/wave_robot.png"  // Your robot image path
+              alt="Robot"
+              className="w-55 h-55 gentle-bounce"
+            />
+            <div className="bg-blue-600 px-4 py-2 rounded-lg mt-2 animate-pulse">
+              <p className="text-sm font-bold">Hello! Let's code!</p>
+            </div>
+          </div>
+
           <div className="relative z-10 text-center px-6">
             <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-300 mb-4 animate-bounce drop-shadow-lg">
               🌌 Welcome to Looplands!
@@ -391,7 +410,7 @@ export default function Chapter1() {
           </div>
         </div>
       ) : (
-        <>
+        <div className="bg-[#0A0F28] flex-1">
           {/* Header & XP & Mana */}
           <div className="bg-[#130c301f] shadow-lg px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 md:gap-12 rounded-xl">
             <div className="flex-1 w-full">
@@ -429,92 +448,50 @@ export default function Chapter1() {
               <div className="text-blue-300 font-semibold mb-2">{questionText}</div>
 
               {/* Workspace */}
-              <div className="bg-[#1C1F3C] rounded-xl p-4 shadow-lg mb-4">
-                <h4 className="font-semibold text-blue-300 mb-2">📝 Workspace</h4>
-                <div id="workspace" className="flex gap-2 justify-center">
-                  {droppedBlocks.map((block, idx) => (
-                    <div
-                      key={idx}
-                      className={`w-20 h-12 border-2 border-gray-700 rounded flex items-center justify-center text-gray-400 font-semibold ${block ? "bg-green-600 text-white" : "bg-[#0F1228]"}`}
-                    >
-                      {block || "Drop"}
-                    </div>
-                  ))}
-                </div>
-                <button
-                  onClick={handleResetWorkspace}
-                  className="mt-2 px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-sm"
-                >
-                  Reset Workspace
-                </button>
+              <div id="workspace" className="bg-[#1c1f3c] p-3 rounded-lg min-h-[100px] mb-4 flex flex-wrap gap-2">
+                {droppedBlocks.map((block, i) => (
+                  <div key={i} className="bg-gray-600 px-3 py-2 rounded-md min-w-[90px] text-center">{block}</div>
+                ))}
               </div>
 
-              {/* Blocks Tray */}
-              <div className="blocks-tray bg-[#0F1228] rounded-xl p-4 shadow-lg flex overflow-x-auto gap-2">
-                {shuffledBlocks.map((block, idx) => (
-                  <div
-                    key={idx}
-                    className="draggable-block w-20 h-12 bg-blue-600 rounded flex items-center justify-center text-white font-semibold cursor-pointer hover:bg-blue-500"
-                    data-value={block}
-                  >
+              {/* Shuffled blocks */}
+              <div className="flex flex-wrap gap-2">
+                {shuffledBlocks.map((block, i) => (
+                  <div key={i} className="draggable-block cursor-grab bg-blue-600 px-3 py-2 rounded-md min-w-[60px]" data-value={block}>
                     {block}
                   </div>
                 ))}
               </div>
 
-              {/* Code preview */}
-              <div className="mt-1 bg-[#0F1228] p-1 rounded font-mono text-green-300 text-[14px] overflow-x-auto h-10">
-                {droppedBlocks.filter((b) => b).join(" ")}
+              {/* Code Preview */}
+              <div className="bg-[#0f122d] p-3 rounded-lg min-h-[30px] mt-1 font-mono text-sm text-green-300 overflow-auto">
+                <pre>{droppedBlocks.join(" ")}</pre>
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-2 mt-2">
+              {/* Controls */}
+              <div className="flex gap-3 mt-4">
                 <button
                   onClick={handleRunCode}
-                  className="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 rounded text-white font-bold"
+                  disabled={isProcessingCompletion}
+                  className="bg-green-500 px-4 py-2 rounded-md font-bold hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Run Code
+                  {isProcessingCompletion ? "Saving..." : "Run Code"}
                 </button>
-                <button
-                  onClick={handleShowHint}
-                  className="flex-1 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 rounded text-white font-bold"
-                >
-                  Hint
-                </button>
-                {/* 🔧 ENHANCED: Show different buttons based on level and portal status */}
-                {currentLevelIndex < totalLevels - 1 ? (
-                  <button
-                    onClick={handleNextLevel}
-                    className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded text-white font-bold"
-                  >
-                    Next Level
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => portalActivated && navigate("/McqPage1", { state: { xp, mana, selectedLanguage } })}
-                    className={`flex-1 px-4 py-2 rounded text-white font-bold ${portalActivated ? "bg-green-500 hover:bg-green-600" : "bg-gray-600 cursor-not-allowed"}`}
-                  >
-                    MCQ Quiz
-                  </button>
-                )}
+                <button onClick={handleResetWorkspace} className="bg-yellow-500 px-4 py-2 rounded-md font-bold hover:bg-yellow-600">Reset</button>
+                <button onClick={handleNextLevel} className="bg-blue-500 px-4 py-2 rounded-md font-bold hover:bg-blue-600">Next</button>
               </div>
 
-              {/* Display current hint */}
-              {currentHint && (
-                <div className="mt-2 p-2 bg-gray-800 rounded text-yellow-300 text-sm">
-                  💡 {currentHint}
-                </div>
-              )}
+              {/* Hint */}
+              <div className="mt-2">
+                <button onClick={handleShowHint} className="bg-purple-500 px-4 py-2 rounded-md font-bold hover:bg-purple-600 mb-1">Show Hint (-5 Mana)</button>
+                {currentHint && <p className="text-gray-300 text-sm mt-1">{currentHint}</p>}
+              </div>
 
               {/* Game message */}
-              {gameMessage && (
-                <div className="mt-2 p-2 bg-gray-900 rounded text-white text-sm">
-                  {gameMessage}
-                </div>
-              )}
+              {gameMessage && <div className="text-yellow-300 mt-2 font-semibold">{gameMessage}</div>}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

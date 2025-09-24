@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
 import { db, auth } from "../firebase.config";
 import { useNavigate } from "react-router-dom";
 import { Star, Zap, Book } from "lucide-react";
@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [completedLevels, setCompletedLevels] = useState([]);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [userName, setUserName] = useState("");
+  const [badges, setBadges] = useState([]);
 
   const navigate = useNavigate();
 
@@ -21,13 +22,27 @@ export default function Dashboard() {
     // Real-time listener for user_progress
     const unsubscribeProgress = onSnapshot(
       doc(db, "user_progress", user.uid),
-      (docSnap) => {
+      async (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           setXp(data.totalxp || 0);
           setMana(data.mana ?? 100);
           setCompletedLevels(data.completedLevels || []);
           setHintsUsed(data.hintsUsed || 0);
+
+          // Fetch badges
+          if (data.badges && data.badges.length > 0) {
+            const badgesData = [];
+            for (const badgeId of data.badges) {
+              const badgeSnap = await getDoc(doc(db, "badges", badgeId));
+              if (badgeSnap.exists()) {
+                badgesData.push(badgeSnap.data());
+              }
+            }
+            setBadges(badgesData);
+          } else {
+            setBadges([]);
+          }
         }
       }
     );
@@ -42,7 +57,6 @@ export default function Dashboard() {
       }
     );
 
-    // Cleanup listeners on unmount
     return () => {
       unsubscribeProgress();
       unsubscribeUser();
@@ -128,6 +142,32 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Badges Section */}
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold text-gray-300 mb-4 flex items-center gap-2">
+          <Star className="w-5 h-5 text-yellow-400" /> Your Badges
+        </h2>
+        {badges.length > 0 ? (
+          <div className="flex flex-wrap gap-4">
+            {badges.map((badge) => (
+              <div
+                key={badge.badge_name}
+                className="bg-[#33366a] rounded-xl p-4 text-center shadow-lg min-w-[100px]"
+              >
+                <img
+                  src={`/${badge.icon.replace("./", "")}`}
+                  alt={badge.badge_name}
+                  className="w-16 h-16 object-contain mx-auto mb-2"
+                />
+                <p className="text-yellow-400 font-semibold">{badge.badge_name}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500">No badges earned yet.</p>
+        )}
+      </div>
+
       {/* Continue Adventure */}
       <div className="text-center">
         <motion.button
@@ -142,6 +182,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
 
 
 
